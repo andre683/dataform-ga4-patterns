@@ -1,0 +1,56 @@
+config {
+  type: "assertion",
+  tags: ["ga4", "daily_check", "watcher"]
+}
+
+js {
+  const { brands } = require("includes/brands");
+}
+
+-- Idempotency gate: FAIL (return rows) only when all brands are already caught up.
+-- Downstream models depend on this assertion, so a failure blocks reprocessing
+-- when data is already current. When any brand has new data, this returns no rows
+-- and downstream runs proceed.
+
+WITH superform_latest AS (
+  ${brands.map(b => `
+    SELECT
+      '${b.brand}' AS brand,
+      MAX(event_date) AS latest_superform_date
+    FROM ${ref(b.dataset, "ga4_events")}
+    WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  `).join(" UNION ALL ")}
+),
+watermark AS (
+  SELECT brand, latest_unified_date
+  FROM \`${dataform.projectConfig.defaultDatabase}.${dataform.projectConfig.vars.TRANSFORMATIONS_DATASET}.processing_watermark\`
+),
+per_brand AS (
+  SELECT
+    COALESCE(s.brand, w.brand) AS brand,
+    s.latest_superform_date,
+    w.latest_unified_date,
+    CASE
+      WHEN s.latest_superform_date IS NOT NULL
+       AND w.latest_unified_date IS NOT NULL
+       AND s.latest_superform_date = w.latest_unified_date
+      THEN TRUE ELSE FALSE
+    END AS is_caught_up
+  FROM superform_latest s
+  FULL OUTER JOIN watermark w
+    ON s.brand = w.brand
+),
+summary AS (
+  SELECT
+    COUNT(*) AS total_brands,
+    COUNTIF(is_caught_up) AS caught_up_brands,
+    MAX(latest_unified_date) AS latest_unified_date
+  FROM per_brand
+)
+SELECT
+  'All brands are caught up.' AS reason,
+  total_brands,
+  caught_up_brands,
+  latest_unified_date
+FROM summary
+WHERE caught_up_brands = total_brands

@@ -1,0 +1,10 @@
+defaultProject: your-gcp-project-id
+defaultLocation: US
+defaultDataset: ga4_unified
+defaultAssertionDataset: ga4_assertions
+dataformCoreVersion: 3.0.0
+vars:
+    TRANSFORMATIONS_DATASET: ga4_staging
+    LOCAL_TIMEZONE: America/Chicago
+    START_DATE: "2023-07-01"
+    BACKFILL_DATE: '' # CLI only: --vars=BACKFILL_DATE=YYYY-MM-DD

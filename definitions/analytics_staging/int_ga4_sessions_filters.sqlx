@@ -1,0 +1,55 @@
+config {
+  type: "incremental",
+  description: "Session eligibility table used to filter facts consistently",
+  schema: dataform.projectConfig.vars.TRANSFORMATIONS_DATASET,
+  tags: ["int", "ga4", "sessions_filters"],
+  bigquery: {
+    partitionBy: "session_date",
+    clusterBy: ["brand", "session_id"],
+    labels: {
+        layer: "intermediate",
+        source: "ga4",
+        brand: "all",
+        purpose: "sessions_filters"
+    }
+  }
+}
+
+js {
+  const { ga4_config, countryFilter, hostnameFilter } = require("includes/ga4_config");
+}
+
+pre_operations {
+  DECLARE date_checkpoint DATE;
+  SET date_checkpoint = (
+    ${when(incremental(),
+      `SELECT COALESCE(MAX(session_date) + 1, DATE('${ga4_config.START_DATE}'))
+       FROM ${self()}
+       WHERE is_final = TRUE`,
+      `SELECT DATE('${ga4_config.START_DATE}')`
+    )}
+  );
+
+  ${when(incremental(),
+    `DELETE FROM ${self()} WHERE session_date >= date_checkpoint`
+  )}
+}
+
+-- Defines the canonical session eligibility scope used by all GA4 fact tables.
+-- Any session excluded here will be excluded from all downstream facts.
+SELECT
+  brand,
+  session_id,
+  session_date,
+  is_final,
+FROM ${ref("analytics_staging", "int_ga4_sessions")}
+WHERE session_date >= date_checkpoint
+  AND (${hostnameFilter("brand", "device_hostname", "page_hostname")})
+  AND (${countryFilter("geo.country")})
+  AND traffic_type IS NULL
+  AND NOT (
+    COALESCE(last_non_direct_traffic_source.source, '') IN (
+      ${ga4_config.REFERRALS_EXCLUDED.map(s => `'${s}'`).join(", ")}
+    )
+    OR (lnd_source = 'adobe' AND lnd_campaign LIKE '[proof%')
+  )

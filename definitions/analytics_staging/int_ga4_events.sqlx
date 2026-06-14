@@ -1,0 +1,154 @@
+config {
+  type: "incremental",
+  description: "Intermediate GA4 events unioned across all brands with basic filters and brand enrichment. Used for final fact_ga4_events model.",
+  schema: dataform.projectConfig.vars.TRANSFORMATIONS_DATASET,
+  tags: ["int", "ga4", "events"],
+  dependencies: ["ga4_yesterday_gate"],
+  bigquery: {
+    partitionBy: "event_date",
+    clusterBy: ["event_name", "session_id"],
+    labels: {
+      layer: "intermediate",
+      source: "ga4",
+      brand: "all",
+      purpose: "events_prep"
+    }
+  }
+}
+
+js {
+  const { brands } = require("includes/brands");
+  const { ga4_config } = require("includes/ga4_config");
+}
+
+pre_operations {
+  DECLARE date_checkpoint DATE;
+  SET date_checkpoint = (
+    ${when(incremental(),
+      `SELECT
+        greatest(
+        coalesce(max(event_date)+1, date('${ga4_config.START_DATE}')),
+        date_sub(current_date(), interval 150 day)
+        )
+        FROM ${self()}
+        WHERE is_final = TRUE`,
+      `SELECT DATE('${ga4_config.START_DATE}')`
+    )}
+  );
+
+  ${when(incremental(),
+    `DELETE FROM ${self()} WHERE event_date >= date_checkpoint`
+  )}
+}
+
+${brands.map(b => `
+  SELECT
+    '${b.brand}' AS brand,
+
+    -- Core GA4 identifiers
+    event_id,
+    event_name,
+    event_date,
+    session_id,
+    user_pseudo_id,
+    user_id,
+
+    -- Time fields
+    time.event_timestamp AS event_timestamp,
+    time.event_timestamp_utc AS event_timestamp_utc,
+    time.user_first_touch_timestamp AS user_first_touch_timestamp,
+    time.user_first_touch_timestamp_utc AS user_first_touch_timestamp_utc,
+    time.timestamp_local AS timestamp_local,
+    time.date_local AS date_local,
+
+    -- Meta + status
+    _run_timestamp,
+    is_final,
+    is_active_user,
+    is_measurement_protocol_hit,
+
+    -- Traffic source
+    first_user_traffic_source.source AS first_source,
+    first_user_traffic_source.medium AS first_medium,
+    first_user_traffic_source.campaign_name AS first_campaign,
+    fixed_traffic_source.source AS fixed_source,
+    fixed_traffic_source.medium AS fixed_medium,
+    fixed_traffic_source.campaign AS fixed_campaign,
+
+    -- Event parameters
+    event_params.ignore_referrer AS ignore_referrer,
+    event_params.synthetic_bundle AS synthetic_bundle,
+    event_params.engagement_time_msec AS engagement_time_msec,
+    event_params.engaged_session_event AS engaged_session_event,
+    event_params.entrances AS session_entrance,
+    event_params.session_engaged AS session_engaged,
+    event_params.link_text,
+    event_params.link_url,
+    event_params.content_group,
+    event_params.content_type,
+    event_params.promotion_name,
+
+    -- Custom event parameters
+    event_params_custom.event_category AS event_category,
+    event_params_custom.event_subcategory AS event_subcategory,
+    event_params_custom.event_class AS event_class,
+    event_params_custom.event_order AS event_order,
+    event_params_custom.event_label AS event_label,
+    event_params_custom.clp AS clp,
+    event_params_custom.active_state AS active_state,
+    event_params_custom.login_status AS login_status,
+    event_params_custom.unlimited_status AS unlimited_status,
+    event_params_custom.page_fragment AS page_fragment,
+    event_params_custom.transaction_affiliation AS transaction_affiliation,
+    event_params_custom.traffic_type AS traffic_type,
+    event_params_custom.click_location AS click_location,
+    event_params_custom.active_subscription AS active_subscription,
+    event_params_custom.active_membership AS active_membership,
+    event_params_custom.element_type AS element_type,
+    event_params_custom.is_bot_stape AS is_bot_stape,
+    event_params_custom.bot_score_stape AS bot_score_stape,
+    event_params_custom.experiment_name AS experiment_name,
+    event_params_custom.experiment_experience AS experiment_experience,
+
+    -- Items, batch, ecommerce arrays
+    items,
+    batch,
+    ecommerce,
+
+    -- URL parameters
+    url_params_custom.promoCode AS promo_code,
+    url_params_custom.fbclid AS fbclid,
+
+    -- Click identifiers
+    click_ids.gclid AS gclid,
+    click_ids.dclid AS dclid,
+    click_ids.srsltid AS srsltid,
+    click_ids.gbraid AS gbraid,
+    click_ids.wbraid AS wbraid,
+    click_ids.msclkid AS msclkid,
+
+    -- Page context
+    page.hostname AS page_hostname,
+    page.location AS page_location,
+    page.path AS page_path,
+    page.referrer AS page_referrer,
+    page.title AS page_title,
+
+    -- Session context
+    session_info.hit_number AS hit_number,
+    session_info.page_number AS page_number,
+    has_source,
+
+    -- Geo and Device
+    geo.country AS country,
+    geo.region AS region,
+    geo.city AS city,
+    device.web_info.hostname AS device_hostname,
+    device.category AS device_category,
+    device.web_info.browser AS device_browser,
+    device.operating_system AS device_operating_system
+
+  FROM ${ref(b.dataset, "ga4_events")}
+  WHERE event_date >= date_checkpoint
+  AND device.web_info.hostname IN (${b.hostname.map(h => `'${h}'`).join(", ")})
+`).join("UNION ALL")}
