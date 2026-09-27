@@ -75,6 +75,8 @@ dataform run --vars=BACKFILL_DATE=2024-01-15 --actions=my_model
 
 See the companion note: [Backfilling incremental models in Dataform with a compilation variable](https://andrebuilds.com/notes/backfilling-incremental-models-dataform.html).
 
+Full standalone walkthrough (problem, code, usage, all three CLI variants): [docs/incremental-backfill.md](docs/incremental-backfill.md)
+
 ### 4. Idempotency gate assertion (`definitions/assertions/ga4_yesterday_gate.sqlx`)
 
 A Dataform assertion that checks whether the pipeline has already processed the latest available data across all brands. If the watermark table shows all brands are current, the assertion fails intentionally, which blocks downstream models from reprocessing data that is already up to date.
