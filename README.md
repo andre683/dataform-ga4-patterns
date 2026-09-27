@@ -1,6 +1,6 @@
 # dataform-ga4-patterns
 
-Clean-room patterns extracted from a production Dataform project that unifies GA4 data across 8 ecommerce brands into a single BigQuery warehouse. All company-specific values (project IDs, property IDs, brand names, hostnames) have been replaced with placeholders.
+Clean-room patterns extracted from a production Dataform project that unifies GA4 data across multiple ecommerce brands into a single BigQuery warehouse. All company-specific values (project IDs, property IDs, brand names, hostnames) have been replaced with placeholders.
 
 The full case study is at [andrebuilds.com/work/unified-ga4-pipeline.html](https://andrebuilds.com/work/unified-ga4-pipeline.html).
 
@@ -8,7 +8,7 @@ The full case study is at [andrebuilds.com/work/unified-ga4-pipeline.html](https
 
 ## What this is
 
-I built and maintain a Dataform pipeline that takes GA4 event exports from 8 brands, runs them through shared staging logic, and produces a unified session and transaction layer used by analysts and reporting tools. The same SQL runs for every brand with no copy-pasting and no per-brand branches.
+I built and maintain a Dataform pipeline that takes GA4 event exports from multiple brands, runs them through shared staging logic, and produces a unified session and transaction layer used by analysts and reporting tools. The same SQL runs for every brand with no copy-pasting and no per-brand branches.
 
 This repo contains the architectural patterns that make that possible. It is not a plug-and-play package. It is a reference for how to structure a multi-brand GA4 pipeline in Dataform, and a record of the decisions I made along the way.
 
